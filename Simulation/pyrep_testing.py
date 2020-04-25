@@ -1,38 +1,41 @@
 import re
 import sim
 import sys
-import pickle as pkl
-import IPython
-import numpy as np
-import math
 import time
+import math
+import multiprocessing
+import numpy as np
+import pickle as pkl
 from pyrep import PyRep
+from multiprocessing import Process
 
-pr = PyRep()
-pr.launch('pyrep_testing_scene.ttt',headless = False)
-pr.start()
-params = pkl.load(open('learnt_params.pkl','rb'))
-out  = pr.script_call("run_on_snake@Snake1#18",1,[0,0,0],[0.635,1.435],['yes','its','working'],[]) 
-out  = pr.script_call("run_on_snake@Snake1#0",1,[0,0,0],[0.635,1.435],['yes','its','working'],[])
-out  = pr.script_call("run_on_snake@Snake1#9",1,[0,0,0],[0.635,1.435],['yes','its','working'],[])
+PROCESSES = 10
 
-for _ in range(100):
-    pr.step() #each is one time step
+A = np.random.uniform(0,1,(100,)).tolist()
+w = (1+np.random.uniform(0,1,(100,))).tolist()
 
-# out  = pr.script_call("run_on_snake@Plane#0",1,[0,0,0],[0.635,1.435],['yes','its','working'],[]) 
-# for _ in range(100):
-#     pr.step()
 
-IPython.embed()
-pr.stop() #pr.stop resets the simulator
+def run():
+    global A, w
+    num_snakes = 10
+    cur_id = multiprocessing.current_process()._identity[0] - 1
+    my_A = A[cur_id*num_snakes:(cur_id+1)*num_snakes]
+    my_w = w[cur_id*num_snakes:(cur_id+1)*num_snakes]
+    pr = PyRep()
+    pr.launch('pyrep_testing_scene.ttt',headless = True)
+    pr.start()
+    print("Started")
+    # params = pkl.load(open('learnt_params.pkl','rb')) 
+    for i in range(num_snakes):
+        _  = pr.script_call("run_on_snake@Snake1#"+str(9*i),1,[0,0,0],[my_A[i],my_w[i]],['yes','its','working'],[])
 
-pr.start()
-params = pkl.load(open('learnt_params.pkl','rb'))
-#out  = pr.script_call("run_on_snake@Snake1#1",1,[0,0,0],[0.635,1.435],['yes','its','working'],[]) 
-out  = pr.script_call("run_on_snake@Snake1#0",1,[0,0,0],[0.635,1.435],['yes','its','working'],[])
-#out  = pr.script_call("run_on_snake@Snake1#2",1,[0,0,0],[0.635,1.435],['yes','its','working'],[])
+    for _ in range(100):
+        pr.step()
+    
+    pr.stop()
+    print("Stopped")
+    pr.shutdown()
 
-for _ in range(100):
-    pr.step()
-pr.stop() 
-pr.shutdown()
+processes = [Process(target=run, args=()) for i in range(PROCESSES)]
+[p.start() for p in processes]
+[p.join() for p in processes]
