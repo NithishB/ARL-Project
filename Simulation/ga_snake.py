@@ -7,11 +7,14 @@ import time
 import numpy as np
 import pickle as pkl
 from argparse import ArgumentParser
+import IPython
 
 class SimulationHelper:
     def __init__(self):
-
+        print("Sim")
         sim.simxFinish(-1)
+        self.num_snakes = 6
+        self.num_joints_per_snake = 8
         self.clientID=sim.simxStart('127.0.0.1',19999,True,True,5000,5) # Connect to V-REP
 
         if self.clientID == -1:
@@ -22,47 +25,31 @@ class SimulationHelper:
         output = sim.simxGetObjectGroupData(self.clientID,sim.sim_appobj_object_type,0,sim.simx_opmode_blocking)
         object_handles_list = output[1]
         object_names_list = output[-1]
+        object_handles_dict = dict(zip(object_names_list,object_handles_list))
+        v_joints = []
+        h_joints = []
 
-        self.snakes_v_joints = {k:[] for k in ['0','8','17','26','35','44']}
-        self.snakes_h_joints = {k:[] for k in ['0','8','17','26','35','44']}
+        self.snakes_h_joints = np.zeros([self.num_snakes,self.num_joints_per_snake])
+        self.snakes_v_joints = np.zeros([self.num_snakes,self.num_joints_per_snake])
 
         for i in range(len(object_names_list)):
-            if 'vJoint' in str(object_names_list[i]) or 'hJoint' in str(object_names_list[i]):
-                try:
-                    num = int(re.findall(r'\d+', str(object_names_list[i]))[0])
-                except:
-                    num = 0
-                if num>=8 and num<=16:
-                    if 'vJoint' in str(object_names_list[i]):
-                        self.snakes_v_joints['8'].append(object_handles_list[i])
-                    elif 'hJoint' in str(object_names_list[i]):
-                        self.snakes_h_joints['8'].append(object_handles_list[i])
-                elif num>=17 and num<=25:
-                    if 'vJoint' in str(object_names_list[i]):
-                        self.snakes_v_joints['17'].append(object_handles_list[i])
-                    elif 'hJoint' in str(object_names_list[i]):
-                        self.snakes_h_joints['17'].append(object_handles_list[i])
-                elif num>=26 and num<=34:
-                    if 'vJoint' in str(object_names_list[i]):
-                        self.snakes_v_joints['26'].append(object_handles_list[i])
-                    elif 'hJoint' in str(object_names_list[i]):
-                        self.snakes_h_joints['26'].append(object_handles_list[i])
-                elif num>=35 and num<=43:
-                    if 'vJoint' in str(object_names_list[i]):
-                        self.snakes_v_joints['35'].append(object_handles_list[i])
-                    elif 'hJoint' in str(object_names_list[i]):
-                        self.snakes_h_joints['35'].append(object_handles_list[i])
-                elif num>=44 and num<=52:
-                    if 'vJoint' in str(object_names_list[i]):
-                        self.snakes_v_joints['44'].append(object_handles_list[i])
-                    elif 'hJoint' in str(object_names_list[i]):
-                        self.snakes_h_joints['44'].append(object_handles_list[i])
-                else:
-                    if 'vJoint' in str(object_names_list[i]):
-                        self.snakes_v_joints['0'].append(object_handles_list[i])
-                    elif 'hJoint' in str(object_names_list[i]):
-                        self.snakes_h_joints['0'].append(object_handles_list[i])
+            if 'vJoint' in str(object_names_list[i]):
+                v_joints.append(object_handles_dict[object_names_list[i]])
+            elif 'hJoint' in str(object_names_list[i]):
+                h_joints.append(object_handles_dict[object_names_list[i]])
 
+        j = 0 
+        k = 0
+        for i in range(len(v_joints)):
+            self.snakes_v_joints[j][k] = int(v_joints[i])
+            self.snakes_h_joints[j][k] = int(h_joints[i])  
+            k+=1        
+            if (i+1)%self.num_joints_per_snake==0:
+                print(i)
+                j+=1
+                k = 0
+            
+        IPython.embed()   
         self.t_const = 0.050000000745058
     
     def run_simulation(self, A, w, p):
@@ -106,6 +93,7 @@ class GA:
         true_val = self.function_valuation(self.actual_soln).reshape((-1,1))
         pop_val = []
         for i in range(len(self.new_population)):
+            #normalize both distance and Square Error and add alpha beta params
             pop_val.append(np.sum(np.square(self.function_valuation(self.new_population[i,:]).reshape((-1,1))-true_val))-self.dist[i])
         self.fitness = np.array(pop_val).reshape((-1,1))
 
@@ -121,7 +109,6 @@ class GA:
     def crossover(self, offspring_size):
         self.offspring = np.empty(offspring_size)
         crossover_point = np.uint8(offspring_size[1]/2)
-
         for k in range(offspring_size[0]):
             parent1_idx = k%self.parents.shape[0]
             parent2_idx = (k+1)%self.parents.shape[0]
@@ -139,8 +126,8 @@ class GA:
             print("Generation : ", generation)
             A,w,p = np.array([s[0] for s in self.new_population]), np.array([s[1] for s in self.new_population]), np.array([s[2] for s in self.new_population])
             self.dist = []
-            for _ in range(0,len(A),6):
-                self.dist.extend(self.sim_help.run_simulation(A,w,p))
+            IPython.embed()
+            self.dist.extend(self.sim_help.run_simulation(A,w,p))
             self.calc_pop_fitness()
             self.select_mating_pool()
             self.crossover(offspring_size=(self.pop_size[0]-self.parents.shape[0], self.num_weights))
