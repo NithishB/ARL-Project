@@ -8,7 +8,6 @@ import numpy as np
 import pickle as pkl
 from pyrep import PyRep
 from multiprocessing import Process
-import IPython
 
 PROCESSES = 10
 

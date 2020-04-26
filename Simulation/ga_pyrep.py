@@ -4,72 +4,66 @@ import sim
 import sys
 import math
 import time
+import contextlib
 import numpy as np
 import pickle as pkl
+import multiprocessing
+from pyrep import PyRep
+from multiprocessing import Process
 from argparse import ArgumentParser
-import IPython
+from pyrep.backend.utils import suppress_std_out_and_err
 
 class SimulationHelper:
-    def __init__(self):
+    def __init__(self, pop_size):
         self.num_snakes = 10
-        num_snakes = 10
-        
-        self.num_joints_per_snake = 8
-        self.clientID=sim.simxStart('127.0.0.1',19999,True,True,5000,5) # Connect to V-REP
-
-        if self.clientID == -1:
-            sys.exit("Couldn't connect to CSim server")
-        else:
-            print("Connected to Sim Server")
-
-        output = sim.simxGetObjectGroupData(self.clientID,sim.sim_appobj_object_type,0,sim.simx_opmode_blocking)
-        object_handles_list = output[1]
-        object_names_list = output[-1]
-        object_handles_dict = dict(zip(object_names_list,object_handles_list))
-        v_joints = []
-        h_joints = []
-
-        self.snakes_h_joints = np.zeros([self.num_snakes,self.num_joints_per_snake])
-        self.snakes_v_joints = np.zeros([self.num_snakes,self.num_joints_per_snake])
-
-        for i in range(len(object_names_list)):
-            if 'vJoint' in str(object_names_list[i]):
-                v_joints.append(object_handles_dict[object_names_list[i]])
-            elif 'hJoint' in str(object_names_list[i]):
-                h_joints.append(object_handles_dict[object_names_list[i]])
-
-        j = 0 
-        k = 0
-        for i in range(len(v_joints)):
-            self.snakes_v_joints[j][k] = int(v_joints[i])
-            self.snakes_h_joints[j][k] = int(h_joints[i])  
-            k+=1        
-            if (i+1)%self.num_joints_per_snake==0:
-                print(i)
-                j+=1
-                k = 0
-            
-        IPython.embed()   
-        self.t_const = 0.050000000745058
+        self.pop_size = pop_size
+        self.PROCESSES = self.pop_size//10
     
+    def run(self, A, w, p, cur_id, distances):
+        my_A = A[cur_id*self.num_snakes:(cur_id+1)*self.num_snakes]
+        my_w = w[cur_id*self.num_snakes:(cur_id+1)*self.num_snakes]
+        my_p = p[cur_id*self.num_snakes:(cur_id+1)*self.num_snakes]
+
+        with suppress_std_out_and_err():
+            prs = PyRep()
+            prs.launch('pyrep_testing_scene.ttt',headless = True)
+            prs.start()
+
+            position_initial = []
+            for i in range(self.num_snakes):
+                try:
+                    _  = prs.script_call("run_on_snake@Snake1#"+str(9*i),1,[0,0,0],[my_A[i],my_w[i],my_p[i]],['yes','its','working'],[])
+                    position_initial.append(np.array(prs.script_call("get_position@Snake1#"+str(9*i),1,[],[],['yes','its','working'],[])[1]))
+                except:
+                    print(my_A,my_w,my_p)
+
+            for _ in range(100):
+                prs.step()
+            
+            position_final = []
+            dist = []
+            for i in range(self.num_snakes):
+                position_final.append(np.array(prs.script_call("get_position@Snake1#"+str(9*i),1,[],[],['yes','its','working'],[])[1]))
+                diff = abs(position_final[i]-position_initial[i])
+                dist.append(diff[1]**2+diff[0]**2)
+                # print("Distance moved"+str(i)+" = " + str(diff[1]**2+diff[0]**2))
+            distances[:,cur_id] = np.array(dist)
+            prs.stop()
+            prs.shutdown()
+
     def run_simulation(self, A, w, p):
-        t = 0
         A /= 100.
         w *= 100.
 
-        while t<5:
-            t += self.t_const
-            time.sleep(self.t_const)
+        print("Starting Simulation")
+        start = time.time()
+        distances = np.zeros((self.num_snakes,self.PROCESSES))
+        processes = [Process(target=self.run, args=(A,w,p,id,distances)) for id in range(self.PROCESSES)]
+        [pr.start() for pr in processes]
+        [pr.join() for pr in processes]
+        print("Done Simulation in {} secs".format(time.time()-start))
+        return distances.ravel().tolist()
 
-            for ind,j in enumerate(self.snakes_h_joints.keys()):
-                for i in range(1,len(self.snakes_v_joints[j])):
-                    h_cmd = 0
-                    v_cmd = (A[ind]*math.sin(t*p[ind]+i*w[ind]))
-                    err_code_h = sim.simxSetJointTargetPosition(self.clientID,self.snakes_h_joints[j][i-1],h_cmd,sim.simx_opmode_oneshot)
-                    err_code_v = sim.simxSetJointTargetPosition(self.clientID,self.snakes_v_joints[j][i-1],v_cmd,sim.simx_opmode_oneshot)
-        
-        return [0]*len(self.snakes_h_joints.keys())
-    
 class GA:
     def __init__(self, sol_per_pop, num_mating_parents, num_generations):
         loaded_data = np.load('points.npz', allow_pickle=True)
@@ -82,7 +76,7 @@ class GA:
         self.equation_inputs = np.array(loaded_data['cx'][0])
         self.pop_size = (self.sol_per_pop,self.num_weights)
         self.new_population = np.random.uniform(-1.0,1.0,self.pop_size)
-        self.sim_help = SimulationHelper()
+        self.sim_help = SimulationHelper(self.sol_per_pop)
     
     def function_valuation(self, weights):
         x = self.equation_inputs
@@ -125,9 +119,7 @@ class GA:
         for generation in range(self.num_generations):
             print("Generation : ", generation)
             A,w,p = np.array([s[0] for s in self.new_population]), np.array([s[1] for s in self.new_population]), np.array([s[2] for s in self.new_population])
-            self.dist = []
-            IPython.embed()
-            self.dist.extend(self.sim_help.run_simulation(A,w,p))
+            self.dist = self.sim_help.run_simulation(A,w,p)
             self.calc_pop_fitness()
             self.select_mating_pool()
             self.crossover(offspring_size=(self.pop_size[0]-self.parents.shape[0], self.num_weights))
