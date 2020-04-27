@@ -46,7 +46,7 @@ class SimulationHelper:
             prs.shutdown()
 
     def run_simulation(self, A, w, p):
-        
+
         print("Starting Generation Simulation")
         all_distances = []
         sim_start = time.time()
@@ -89,17 +89,26 @@ class GA:
         y = weights[0]*np.sin(weights[1]*x + weights[2])
         return y
     
-    def calc_pop_fitness(self):
-        true_val = self.function_valuation(self.actual_soln).reshape((-1,1))
-        pop_val = []
-        self.dist = np.array(self.dist)
-        self.dist = ((self.dist-min(self.dist))/max(self.dist)-min(self.dist)).tolist()
-        for i in range(len(self.new_population)):
-            #normalize both distance and Square Error and add alpha beta params
-            num = self.function_valuation(self.new_population[i,:]).reshape((-1,1)) - true_val
-            den = self.function_valuation(self.new_population[i,:]).reshape((-1,1)) + true_val
-            pop_val.append(0.6*np.sum(np.square(num/den))-0.4*self.dist[i])
-        self.fitness = np.array(pop_val).reshape((-1,1))
+    def calc_pop_fitness(self, method=1):
+        if method == 1:
+            true_val = self.function_valuation(self.actual_soln).reshape((-1,1))
+            pop_val = []
+            for i in range(len(self.new_population)):
+                #normalize both distance and Square Error and add alpha beta params
+                num = self.function_valuation(self.new_population[i,:]).reshape((-1,1)) - true_val
+                pop_val.append(np.sum(np.square(num))-self.dist[i])
+            self.fitness = np.array(pop_val).reshape((-1,1))
+        else:
+            true_val = self.function_valuation(self.actual_soln).reshape((-1,1))
+            pop_val = []
+            self.dist = np.array(self.dist)
+            self.dist = ((self.dist-min(self.dist))/max(self.dist)-min(self.dist)).tolist()
+            for i in range(len(self.new_population)):
+                #normalize both distance and Square Error and add alpha beta params
+                num = self.function_valuation(self.new_population[i,:]).reshape((-1,1)) - true_val
+                den = self.function_valuation(self.new_population[i,:]).reshape((-1,1)) + true_val
+                pop_val.append(0.6*np.sum(np.square(num/den))-0.4*self.dist[i])
+            self.fitness = np.array(pop_val).reshape((-1,1))
 
     def select_mating_pool(self):
         parents = np.empty((self.num_mating_parents, self.new_population.shape[1]))
@@ -131,20 +140,23 @@ class GA:
             print("Generation : {}/{}".format(generation+1,self.num_generations))
             A,w,p = np.array([s[0] for s in self.new_population]), np.array([s[1] for s in self.new_population]), np.array([s[2] for s in self.new_population])
             self.dist = self.sim_help.run_simulation(A,w,p)
-            self.calc_pop_fitness()
+            self.calc_pop_fitness(method=1)
             self.save_best_snakes.append(self.new_population[np.argsort(self.fitness)][:5])
             self.select_mating_pool()
             self.crossover(offspring_size=(self.pop_size[0]-self.parents.shape[0], self.num_weights))
             self.mutation()
             self.new_population[0:self.parents.shape[0], :] = self.parents
             self.new_population[self.parents.shape[0]:, :] = self.offspring
+            self.best_match_idx = np.where(self.fitness == np.min(self.fitness))
             print("Best result : ", np.min(self.fitness))
-        self.calc_pop_fitness()
+            print("Best solution : ", self.new_population[self.best_match_idx[0][0], :])
+            print("Actual solution : ", self.actual_soln)
+        self.calc_pop_fitness(method=1)
         self.best_match_idx = np.where(self.fitness == np.min(self.fitness))
         print("-"*70)
         print("Best solution : ", self.new_population[self.best_match_idx[0][0], :])
         print("Best solution fitness : ", self.fitness[self.best_match_idx[0][0]][0])
-        pkl.dump(self.save_best_snakes, open('best_snakes.pkl','wb'))
+        pkl.dump(self.save_best_snakes, open('checkpoint/best_snakes.pkl','wb'))
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -173,6 +185,7 @@ if __name__ == '__main__':
         try:
             ga = pkl.load(open('checkpoint/ga_object.pkl','rb'))
             print("Successfully loaded from previous checkpoint!")
+            ga.num_generations = num_generations
             ga.loop_run()
             pkl.dump(ga, open('checkpoint/ga_object.pkl','wb'))
         except:
