@@ -1,52 +1,50 @@
-import re
-import sim
-import sys
+import os
 import time
-import math
-import multiprocessing
 import numpy as np
 import pickle as pkl
+import tkinter as tk
 from pyrep import PyRep
-from multiprocessing import Process
 
-PROCESSES = 10
+def write(l,name):
+    l.config(text=name, fg='red')
 
-A = np.random.uniform(0,1,(100,)).tolist()
-w = (1+np.random.uniform(0,1,(100,))).tolist()
+def show_screen(name):
+    root = tk.Tk()
+    root.wm_overrideredirect(True)
+    root.geometry("{0}x{1}+0+0".format(root.winfo_screenwidth(), root.winfo_screenheight()))
+    root.bind("<Button-1>", lambda evt: root.destroy())
+    l = tk.Label(text='', font=("Helvetica", 70))
+    l.pack(expand=True)
+    start = time.time()
+    while time.time() - start < 3:
+        write(l,name)
+        root.update_idletasks()
+        root.update()
+    root.destroy()
 
-
-def run():
-    global A, w
-    num_snakes = 10
-    #cur_id = multiprocessing.current_process()._identity[0] - 1
-    #my_A = A[cur_id*num_snakes:(cur_id+1)*num_snakes]
-    #my_w = w[cur_id*num_snakes:(cur_id+1)*num_snakes]
+def run_snake(A, w, p):
+    num_snakes = 3
     pr = PyRep()
-    pr.launch('pyrep_testing_scene.ttt',headless = False)
+    pr.launch('pyrep_video.ttt',headless = False)
     pr.start()
-    print("Started")
-    # params = pkl.load(open('learnt_params.pkl','rb')) 
-    position_initial = []
     for i in range(num_snakes):
-        #_  = pr.script_call("run_on_snake@Snake1#"+str(9*i),1,[0,0,0],[my_A[i],my_w[i]],['yes','its','working'],[])
-        _  = pr.script_call("run_on_snake@Snake1#"+str(9*i),1,[0,0,0],[0.635,1.45],['yes','its','working'],[])
-        position_initial.append(np.array(pr.script_call("get_position@Snake1#"+str(9*i),1,[],[],['yes','its','working'],[])[1]))
-    #print(position_initial)
-    for _ in range(10):
+        _  = pr.script_call("run_on_snake@Snake1#"+str(9*i),1,[0,0,0],[A[i],w[i],p[i]],['yes','its','working'],[])
+    for _ in range(100):
         pr.step()
-    position_final = []
-    #IPython.embed()
-    for i in range(num_snakes):
-        position_final.append(np.array(pr.script_call("get_position@Snake1#"+str(9*i),1,[],[],['yes','its','working'],[])[1]))
-        diff = abs(position_final[i]-position_initial[i])
-        print("Distance moved"+str(i)+" = " + str(diff[1]**2+diff[0]**2))
-    IPython.embed()
-    print(position_final)
     pr.stop()
-    print("Stopped")
     pr.shutdown()
 
-#processes = [Process(target=run, args=()) for i in range(PROCESSES)]
-#[p.start() for p in processes]
-#[p.join() for p in processes]
-run()
+def run_for_each_snake():
+    methods = os.listdir("checkpoint")
+    for m in methods:
+        best_snakes = pkl.load(open(os.path.join('checkpoint',m,'best_snakes.pkl'),'rb'))
+        num_gen = len(best_snakes)
+        for gen in range(num_gen):
+            top_3_snakes = np.array(best_snakes[gen][:3])
+            A,w,p = top_3_snakes[:,0,0].tolist(), top_3_snakes[:,0,1].tolist(), top_3_snakes[:,0,2].tolist()
+            name = " ".join(["Method",m,"Generation",str(gen)])
+            show_screen(name)
+            run_snake(A,w,p)
+
+if __name__ == "__main__":
+    run_for_each_snake()
