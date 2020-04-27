@@ -40,7 +40,7 @@ class SimulationHelper:
             for i in range(self.num_snakes):
                 position_final.append(np.array(prs.script_call("get_position@Snake1#"+str(9*i),1,[],[],['yes','its','working'],[])[1]))
                 diff = abs(position_final[i]-position_initial[i])
-                dist.append(diff[1]**2+diff[0]**2)
+                dist.append(diff[0]**2)
             return_dict[cur_id] = dist
             prs.stop()
             prs.shutdown()
@@ -65,8 +65,8 @@ class SimulationHelper:
             for k in return_dict:
                 distances[:,k] = return_dict[k]
             all_distances.extend(distances.ravel().tolist())
-            print("Time Taken : {} secs".format(time.time()-start))
-        print("Done Generation Simulation in {} secs".format(time.time()-sim_start))
+            print("Time Taken : {} secs".format(np.round(time.time()-start,3)))
+        print("Done Generation Simulation in {} secs".format(np.round(time.time()-sim_start,3)))
         return all_distances
 
 class GA:
@@ -90,14 +90,25 @@ class GA:
         return y
     
     def calc_pop_fitness(self, method=1):
+        # actually minimizing error of parameters alone
         if method == 1:
-            true_val = self.function_valuation(self.actual_soln).reshape((-1,1))
+            true_val = self.actual_soln.reshape((1,-1))
             pop_val = []
             for i in range(len(self.new_population)):
-                #normalize both distance and Square Error and add alpha beta params
-                num = self.function_valuation(self.new_population[i,:]).reshape((-1,1)) - true_val
-                pop_val.append(np.sum(np.square(num))-self.dist[i])
-            self.fitness = np.array(pop_val).reshape((-1,1))
+                pop_val.append(np.square(self.new_population[i,:].reshape((1,-1)) - true_val))
+            pop_val = np.vstack(tuple(pop_val))
+            pop_val = (pop_val-np.min(pop_val,axis=0))/(np.max(pop_val,axis=0)-np.min(pop_val,axis=0))
+            pop_val = pop_val/3.
+            self.fitness = np.sum(pop_val,axis=1).reshape((-1,1))
+        
+        # normalized just the parameters, no distance
+        # elif method == 2:
+        #     true_val = self.function_valuation(self.actual_soln).reshape((-1,1))
+        #     pop_val = []
+        #     for i in range(len(self.new_population)):
+        #         pop_val.append(np.square(self.function_valuation(self.new_population[i,:]).reshape((-1,1)) - true_val))
+        #     self.fitness = np.array(pop_val).reshape((-1,true_val.shape[0]))
+        # normalized parameters and distance
         else:
             true_val = self.function_valuation(self.actual_soln).reshape((-1,1))
             pop_val = []
@@ -148,14 +159,15 @@ class GA:
             self.new_population[0:self.parents.shape[0], :] = self.parents
             self.new_population[self.parents.shape[0]:, :] = self.offspring
             self.best_match_idx = np.where(self.fitness == np.min(self.fitness))
-            print("Best result : ", np.min(self.fitness))
-            print("Best solution : ", self.new_population[self.best_match_idx[0][0], :])
-            print("Actual solution : ", self.actual_soln)
+            print("Best result : ", np.round(np.min(self.fitness),4))
+            print("Best solution : ", np.round(self.new_population[self.best_match_idx[0][0], :],4))
+            print("Actual solution : ", np.round(self.actual_soln,4))
         self.calc_pop_fitness(method=1)
         self.best_match_idx = np.where(self.fitness == np.min(self.fitness))
         print("-"*70)
-        print("Best solution : ", self.new_population[self.best_match_idx[0][0], :])
-        print("Best solution fitness : ", self.fitness[self.best_match_idx[0][0]][0])
+        print("Best result : ", np.round(np.min(self.fitness),4))
+        print("Best solution : ", np.round(self.new_population[self.best_match_idx[0][0], :],4))
+        print("Actual solution : ", np.round(self.actual_soln,4))
         pkl.dump(self.save_best_snakes, open('checkpoint/best_snakes.pkl','wb'))
 
 if __name__ == '__main__':
