@@ -70,10 +70,11 @@ class SimulationHelper:
         return all_distances
 
 class GA:
-    def __init__(self, sol_per_pop, num_mating_parents, num_generations):
+    def __init__(self, sol_per_pop, num_mating_parents, num_generations, method):
         loaded_data = np.load('data/points.npz', allow_pickle=True)
         params = pkl.load(open('data/params_final.pkl','rb'))
         self.save_best_snakes = []
+        self.method = method
         self.actual_soln = np.array([params['amp']/100.,params['omega']*100.,params['phase']])
         self.num_weights = self.actual_soln.shape[0]
         self.sol_per_pop = sol_per_pop
@@ -101,25 +102,16 @@ class GA:
             pop_val = pop_val/3.
             self.fitness = np.sum(pop_val,axis=1).reshape((-1,1))
         
-        # normalized just the parameters, no distance
-        # elif method == 2:
-        #     true_val = self.function_valuation(self.actual_soln).reshape((-1,1))
-        #     pop_val = []
-        #     for i in range(len(self.new_population)):
-        #         pop_val.append(np.square(self.function_valuation(self.new_population[i,:]).reshape((-1,1)) - true_val))
-        #     self.fitness = np.array(pop_val).reshape((-1,true_val.shape[0]))
-        # normalized parameters and distance
+        # actually minimizing error of parameters and distance
         else:
-            true_val = self.function_valuation(self.actual_soln).reshape((-1,1))
+            true_val = self.actual_soln.reshape((1,-1))
             pop_val = []
-            self.dist = np.array(self.dist)
-            self.dist = ((self.dist-min(self.dist))/max(self.dist)-min(self.dist)).tolist()
             for i in range(len(self.new_population)):
-                #normalize both distance and Square Error and add alpha beta params
-                num = self.function_valuation(self.new_population[i,:]).reshape((-1,1)) - true_val
-                den = self.function_valuation(self.new_population[i,:]).reshape((-1,1)) + true_val
-                pop_val.append(0.6*np.sum(np.square(num/den))-0.4*self.dist[i])
-            self.fitness = np.array(pop_val).reshape((-1,1))
+                pop_val.append(np.array(np.square(self.new_population[i,:].reshape((1,-1)) - true_val).tolist()+[self.dist[i]]))
+            pop_val = np.vstack(tuple(pop_val))
+            pop_val = (pop_val-np.min(pop_val,axis=0))/(np.max(pop_val,axis=0)-np.min(pop_val,axis=0))
+            pop_val[:,:3] = pop_val[:,:3]/3.
+            self.fitness = np.sum(pop_val[:,:3],axis=1).reshape((-1,1))*0.6 + 0.4*pop_val[:,-1].reshape((-1,1))
 
     def select_mating_pool(self):
         parents = np.empty((self.num_mating_parents, self.new_population.shape[1]))
@@ -175,10 +167,11 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--pop_size', type=int, required=True, help='Population Size')
     parser.add_argument('-m', '--no_mating_parents', type=int, required=True,  help='Number of mating parents')
     parser.add_argument('-n', '--no_of_generations', type=int, required=True, help='Number of generations')
+    parser.add_argument('-t', '--method', type=int, required=True, help='Method of fitness function')
     parser.add_argument('-c', '--continue_training', type=str, default="no", help="Continue previous training")
     args = parser.parse_args()
     
-    sol_per_pop, num_mating_parents, num_generations = args.pop_size, args.no_mating_parents, args.no_of_generations
+    sol_per_pop, num_mating_parents, num_generations, method = args.pop_size, args.no_mating_parents, args.no_of_generations, args.method
     assert sol_per_pop >= 50, "Population size should be atleast 100"
     assert sol_per_pop%50 == 0, "Population size must be a multiple of 100"
     assert num_mating_parents < sol_per_pop, "Mating parents need to be lesser than total population size"
@@ -190,7 +183,7 @@ if __name__ == '__main__':
         pass
 
     if cont == "no":
-        ga = GA(sol_per_pop, num_mating_parents, num_generations)
+        ga = GA(sol_per_pop, num_mating_parents, num_generations, method)
         ga.loop_run()
         pkl.dump(ga, open('checkpoint/ga_object.pkl','wb'))
     else:
