@@ -102,16 +102,33 @@ class GA:
             pop_val = pop_val/3.
             self.fitness = np.sum(pop_val,axis=1).reshape((-1,1))
         
-        # actually minimizing error of parameters and distance
-        else:
+        # actually minimizing error of parameters(0.6) and distance(0.4)
+        elif method == 2:
             true_val = self.actual_soln.reshape((1,-1))
             pop_val = []
             for i in range(len(self.new_population)):
-                pop_val.append(np.array(np.square(self.new_population[i,:].reshape((1,-1)) - true_val).tolist()+[self.dist[i]]))
+                pop_val.append(np.array(np.square(self.new_population[i,:].reshape((1,-1)) - true_val).ravel().tolist()+[self.dist[i]]))
             pop_val = np.vstack(tuple(pop_val))
             pop_val = (pop_val-np.min(pop_val,axis=0))/(np.max(pop_val,axis=0)-np.min(pop_val,axis=0))
             pop_val[:,:3] = pop_val[:,:3]/3.
-            self.fitness = np.sum(pop_val[:,:3],axis=1).reshape((-1,1))*0.6 + 0.4*pop_val[:,-1].reshape((-1,1))
+            self.fitness = np.sum(pop_val[:,:3],axis=1).reshape((-1,1))*0.6 - 0.4*pop_val[:,-1].reshape((-1,1))
+        
+        # actually minimizing error of parameters(0.4) and distance(0.6)
+        elif method == 3:
+            true_val = self.actual_soln.reshape((1,-1))
+            pop_val = []
+            for i in range(len(self.new_population)):
+                pop_val.append(np.array(np.square(self.new_population[i,:].reshape((1,-1)) - true_val).ravel().tolist()+[self.dist[i]]))
+            pop_val = np.vstack(tuple(pop_val))
+            pop_val = (pop_val-np.min(pop_val,axis=0))/(np.max(pop_val,axis=0)-np.min(pop_val,axis=0))
+            pop_val[:,:3] = pop_val[:,:3]/3.
+            self.fitness = np.sum(pop_val[:,:3],axis=1).reshape((-1,1))*0.4 - 0.6*pop_val[:,-1].reshape((-1,1))
+        
+        # actually minimizing distance
+        elif method == 4:
+            pop_val = np.array(self.dist).reshape((-1,1))
+            pop_val = (pop_val-np.min(pop_val,axis=0))/(np.max(pop_val,axis=0)-np.min(pop_val,axis=0))
+            self.fitness = -pop_val
 
     def select_mating_pool(self):
         parents = np.empty((self.num_mating_parents, self.new_population.shape[1]))
@@ -137,14 +154,21 @@ class GA:
             rand_ind = np.random.randint(0,self.num_weights,1)[0]
             self.offspring[idx, rand_ind] = self.offspring[idx, rand_ind] + random_value
     
+    def save_best(self, cnt=5):
+        fitness_argsort = np.argsort(self.fitness)
+        best = {}
+        best['snakes'] = self.new_population[fitness_argsort][:cnt]
+        best['fitness'] = self.fitness[fitness_argsort][:cnt]
+        self.save_best_snakes.append(best)
+
     def loop_run(self):
         for generation in range(self.num_generations):
             print("-"*70)
             print("Generation : {}/{}".format(generation+1,self.num_generations))
             A,w,p = np.array([s[0] for s in self.new_population]), np.array([s[1] for s in self.new_population]), np.array([s[2] for s in self.new_population])
             self.dist = self.sim_help.run_simulation(A,w,p)
-            self.calc_pop_fitness(method=1)
-            self.save_best_snakes.append(self.new_population[np.argsort(self.fitness)][:5])
+            self.calc_pop_fitness(self.method)
+            self.save_best(5)
             self.select_mating_pool()
             self.crossover(offspring_size=(self.pop_size[0]-self.parents.shape[0], self.num_weights))
             self.mutation()
@@ -154,13 +178,14 @@ class GA:
             print("Best result : ", np.round(np.min(self.fitness),4))
             print("Best solution : ", np.round(self.new_population[self.best_match_idx[0][0], :],4))
             print("Actual solution : ", np.round(self.actual_soln,4))
-        self.calc_pop_fitness(method=1)
+            pkl.dump(self.save_best_snakes, open('checkpoint/'+str(self.method)+'/best_snakes.pkl','wb'))
+        self.calc_pop_fitness(self.method)
         self.best_match_idx = np.where(self.fitness == np.min(self.fitness))
         print("-"*70)
         print("Best result : ", np.round(np.min(self.fitness),4))
         print("Best solution : ", np.round(self.new_population[self.best_match_idx[0][0], :],4))
         print("Actual solution : ", np.round(self.actual_soln,4))
-        pkl.dump(self.save_best_snakes, open('checkpoint/best_snakes.pkl','wb'))
+        pkl.dump(self.save_best_snakes, open('checkpoint/'+str(self.method)+'/best_snakes.pkl','wb'))
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -181,17 +206,21 @@ if __name__ == '__main__':
         os.mkdir('checkpoint')
     except:
         pass
+    try:
+        os.mkdir('checkpoint/'+str(method))
+    except:
+        pass
 
     if cont == "no":
         ga = GA(sol_per_pop, num_mating_parents, num_generations, method)
         ga.loop_run()
-        pkl.dump(ga, open('checkpoint/ga_object.pkl','wb'))
+        pkl.dump(ga, open('checkpoint/'+str(method)+'/ga_object.pkl','wb'))
     else:
         try:
-            ga = pkl.load(open('checkpoint/ga_object.pkl','rb'))
+            ga = pkl.load(open('checkpoint/'+str(method)+'/ga_object.pkl','rb'))
             print("Successfully loaded from previous checkpoint!")
             ga.num_generations = num_generations
             ga.loop_run()
-            pkl.dump(ga, open('checkpoint/ga_object.pkl','wb'))
+            pkl.dump(ga, open('checkpoint/'+str(method)+'/ga_object.pkl','wb'))
         except:
             print("Failed to load from previous checkpoint!")
