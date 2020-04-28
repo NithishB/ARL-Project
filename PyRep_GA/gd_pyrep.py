@@ -47,7 +47,7 @@ class GD:
                 print("sim argument error")
             self.pr.stop()
             diff = abs(position_final-position_initial)
-            self.distance = diff[0]**26
+            self.distance = diff[0]**2
             self.loss = self.find_loss()
             print("Iteration "+str(i) + "  Loss:"+str(self.loss))
             self.gradient_step()
