@@ -12,11 +12,13 @@ class GD:
     def __init__(self,num_iterations,learning_rate,headless):
         params = pkl.load(open('data/params_final.pkl','rb'))
         self.ground_truth = np.array([params['amp']/100.,params['omega']*100.,params['phase']])
+        print("Ground truth:" + str(self.ground_truth))``
         self.thetas = np.random.random([3])
-        self.loss = 0
+        self.loss = 0.0
         self.num_iterations = num_iterations
         self.distance  = 0.0
         self.learning_rate = learning_rate
+        self.save_weights = np.zeros([num_iterations,3])
         print("Launching Sim")
         with suppress_std_out_and_err():
             self.pr = PyRep()
@@ -28,12 +30,13 @@ class GD:
         return np.sum(np.square(self.ground_truth - self.thetas)) - self.distance
     
     def gradient_step(self):
-        #IPython.embed()
-        self.thetas-=self.learning_rate*2*np.multiply(self.thetas,abs(self.ground_truth-self.thetas))
+        np.save('gd_weights_'+str(self.num_iterations)+'_'+str(self.learning_rate),self.thetas)
+        self.thetas-=self.learning_rate*2.0*np.multiply(self.thetas,abs(self.ground_truth-self.thetas))
     
     def run(self):
         for i in range(self.num_iterations):
             #calc Distance first
+            self.save_weights[i]=self.thetas
             with suppress_std_out_and_err():
                 self.pr.start()
                 start = time.time()
@@ -50,6 +53,8 @@ class GD:
             self.distance = diff[0]**2
             self.loss = self.find_loss()
             print("Iteration "+str(i) + "  Loss:"+str(self.loss))
+            if i%10==0:
+                print('thetas: '+str(self.thetas))
             self.gradient_step()
 
 if __name__ == '__main__':
@@ -57,7 +62,7 @@ if __name__ == '__main__':
     parser.add_argument('-n', '--num_iterations', type=int, required=True, help='Population Size')
     parser.add_argument('-a', '--A_coeff', type=float, required=True,  help='Number of mating parents')
     parser.add_argument('-c', '--continue_training', type=bool, default=False, help="Continue previous training")
-    parser.add_argument('-o', '--headless', type=str, default=False, help="headless")
+    parser.add_argument('-o', '--headless', type=bool, default=False, help="headless")
     args = parser.parse_args()
     
     num_iterations, alpha,cont,headless = args.num_iterations, args.A_coeff, args.continue_training, args.headless
@@ -70,6 +75,7 @@ if __name__ == '__main__':
     if not cont:
         gd = GD(num_iterations,alpha,headless)
         gd.run()
+        print("Final Thetas:" + str(gd.thetas))
         print("Done, Shutting down sim")
         with suppress_std_out_and_err():
             gd.pr.shutdown()
