@@ -123,6 +123,12 @@ class GA:
             pop_val = (pop_val-np.min(pop_val,axis=0))/(np.max(pop_val,axis=0)-np.min(pop_val,axis=0))
             pop_val[:,:3] = pop_val[:,:3]/3.
             self.fitness = np.sum(pop_val[:,:3],axis=1).reshape((-1,1))*0.4 - 0.6*pop_val[:,-1].reshape((-1,1))
+        
+        # actually minimizing distance
+        elif method == 4:
+            pop_val = np.array(self.dist).reshape((-1,1))
+            pop_val = (pop_val-np.min(pop_val,axis=0))/(np.max(pop_val,axis=0)-np.min(pop_val,axis=0))
+            self.fitness = -pop_val
 
     def select_mating_pool(self):
         parents = np.empty((self.num_mating_parents, self.new_population.shape[1]))
@@ -148,6 +154,13 @@ class GA:
             rand_ind = np.random.randint(0,self.num_weights,1)[0]
             self.offspring[idx, rand_ind] = self.offspring[idx, rand_ind] + random_value
     
+    def save_best(self, cnt=5):
+        fitness_argsort = np.argsort(self.fitness)
+        best = {}
+        best['snakes'] = self.new_population[fitness_argsort][:cnt]
+        best['fitness'] = self.fitness[fitness_argsort][:cnt]
+        self.save_best_snakes.append(best)
+
     def loop_run(self):
         for generation in range(self.num_generations):
             print("-"*70)
@@ -155,7 +168,7 @@ class GA:
             A,w,p = np.array([s[0] for s in self.new_population]), np.array([s[1] for s in self.new_population]), np.array([s[2] for s in self.new_population])
             self.dist = self.sim_help.run_simulation(A,w,p)
             self.calc_pop_fitness(self.method)
-            self.save_best_snakes.append(self.new_population[np.argsort(self.fitness)][:5])
+            self.save_best(5)
             self.select_mating_pool()
             self.crossover(offspring_size=(self.pop_size[0]-self.parents.shape[0], self.num_weights))
             self.mutation()
@@ -165,6 +178,7 @@ class GA:
             print("Best result : ", np.round(np.min(self.fitness),4))
             print("Best solution : ", np.round(self.new_population[self.best_match_idx[0][0], :],4))
             print("Actual solution : ", np.round(self.actual_soln,4))
+            pkl.dump(self.save_best_snakes, open('checkpoint/'+str(self.method)+'/best_snakes.pkl','wb'))
         self.calc_pop_fitness(self.method)
         self.best_match_idx = np.where(self.fitness == np.min(self.fitness))
         print("-"*70)

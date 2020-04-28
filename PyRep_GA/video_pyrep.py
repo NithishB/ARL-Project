@@ -36,13 +36,14 @@ def run_snake(A, w, p):
 
 def run_for_each_snake():
     methods = os.listdir("checkpoint")
+    vid_snake = np.array([[[0.6345,1.4352,2.36]]])
     for m in methods:
         best_snakes = pkl.load(open(os.path.join('checkpoint',m,'best_snakes.pkl'),'rb'))
         num_gen = len(best_snakes)
         for gen in range(num_gen):
-            top_3_snakes = np.array(best_snakes[gen][:3])
+            top_3_snakes = np.vstack((best_snakes[gen]['snakes'][:2],vid_snake))
             A,w,p = top_3_snakes[:,0,0].tolist(), top_3_snakes[:,0,1].tolist(), top_3_snakes[:,0,2].tolist()
-            name = " ".join(["Method",m,"Generation",str(gen)])
+            name = " ".join(["Method",m,"Generation",str(gen+1)+"/"+str(num_gen)])
             show_screen(name)
             run_snake(A,w,p)
 
